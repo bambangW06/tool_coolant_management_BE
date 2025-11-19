@@ -66,3 +66,4 @@ module.exports = {
     }
   },
 };
+//isi gentani ke table master gentani sama actual produksi
