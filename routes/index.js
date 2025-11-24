@@ -89,13 +89,5 @@ router.use("/masterNote", require("./notes/MasterNote"));
 router.use("/reservasiChemical", require("./Reservasi/reservasi"));
 router.use("/auth", require("./login/index"));
 router.use("/gentani", require("./Gentani/index"));
-router.get("/cek-env", (req, res) => {
-  res.json({
-    DB_HOST: process.env.DB_HOST,
-    DB_NAME: process.env.DB_NAME,
-    DB_USER: process.env.DB_USER,
-    NODE_ENV: process.env.NODE_ENV,
-  });
-});
 
 module.exports = router;
