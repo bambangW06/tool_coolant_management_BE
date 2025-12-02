@@ -69,19 +69,24 @@ module.exports = {
   },
   getStdGentani: async (req, res) => {
     try {
+      const { line_id, month } = req.query;
+      const monthStart = month.endsWith("-01") ? month : `${month}-01`;
       const q = `
       SELECT 
         t.*, 
         l.line_nm,
-        m.oil_nm
-      FROM tb_m_oil_targets t
+        m.oil_nm,
+        d.target_id
+      FROM tb_m_oil_targets_hist t
       LEFT JOIN tb_m_lines l ON l.line_id = t.line_id
       LEFT JOIN tb_m_oils m ON m.oil_id = t.oil_id
-      ORDER BY t.target_id DESC
+      LEFT JOIN tb_m_oil_targets d ON d.line_id = t.line_id AND d.oil_id = t.oil_id
+      WHERE t.line_id = $1 AND t.month = $2
+      ORDER BY d.target_id DESC
     `;
 
       const client = await database.connect();
-      const result = await client.query(q);
+      const result = await client.query(q, [line_id, monthStart]);
       const rows = result.rows;
       client.release();
 
@@ -138,6 +143,7 @@ module.exports = {
   editStdGentani: async (req, res) => {
     const { target_id, oil_id, line_id, gentani_val, plan_prod, created_by } =
       req.body;
+    console.log("reg.boy", req.body);
 
     if (!target_id) {
       return res.status(400).json({ message: "target_id wajib diisi" });
