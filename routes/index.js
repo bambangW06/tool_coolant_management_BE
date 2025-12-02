@@ -89,5 +89,6 @@ router.use("/masterNote", require("./notes/MasterNote"));
 router.use("/reservasiChemical", require("./Reservasi/reservasi"));
 router.use("/auth", require("./login/index"));
 router.use("/gentani", require("./Gentani/index"));
+router.use("/planProd", require("./PlanProd/index"));
 
 module.exports = router;
