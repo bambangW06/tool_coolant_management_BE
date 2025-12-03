@@ -178,7 +178,7 @@ module.exports = {
 
         // --- 2️⃣ Ambil STD usage (tidak terpengaruh filter FE) ---
         const stdUsage = await getStdChemicalUsage(start, client);
-        console.log("std usage", stdUsage);
+        // console.log("std usage", stdUsage);
 
         client.release();
 

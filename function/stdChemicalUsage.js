@@ -6,7 +6,7 @@ async function getStdChemicalUsage(targetStart, clientParam = null) {
   try {
     console.log("🔹 targetStart:", targetStart);
 
-    // 1️⃣ Ambil semua STD per line sesuai bulan
+    // 1️⃣ Ambil STD line bulan target
     const stdQuery = `
       SELECT *
       FROM tb_m_oil_targets_hist
@@ -14,27 +14,26 @@ async function getStdChemicalUsage(targetStart, clientParam = null) {
     `;
     const stdRes = await client.query(stdQuery, [targetStart]);
 
-    // --- STD per line (sudah dikali plan_prod dari hist) ---
     const std_per_line = stdRes.rows.map((r) => ({
       line_id: r.line_id,
       oil_id: r.oil_id,
       std_value: parseFloat(r.gentani_val || 0) * parseFloat(r.plan_prod || 0),
     }));
 
-    // console.log("🔹 std_per_line:", std_per_line);
-
-    // Buat set cepat untuk filter usage
+    // Buat set untuk filter usage
     const validStdSet = new Set(
       std_per_line.map((s) => `${s.line_id}_${s.oil_id}`)
     );
 
-    // 2️⃣ STD per mesin: proporsional dari usage 3 bulan terakhir
+    // 2️⃣ Ambil usage 3 bulan terakhir per mesin
     const startTarget = new Date(targetStart);
     const startRef = new Date(startTarget);
     startRef.setMonth(startRef.getMonth() - 3);
 
     const usageQuery = `
-      SELECT u.machine_id, COALESCE(m.root_line_id, u.line_id) AS line_id, u.oil_id,
+      SELECT u.machine_id,
+             COALESCE(m.root_line_id, u.line_id) AS line_id,
+             u.oil_id,
              SUM(u.oil_volume::numeric) AS total_usage
       FROM tb_r_oil_usage AS u
       LEFT JOIN tb_m_machines AS m ON u.machine_id = m.machine_id
@@ -47,7 +46,6 @@ async function getStdChemicalUsage(targetStart, clientParam = null) {
       startTarget.toISOString().slice(0, 10) + " 07:00:00",
     ]);
 
-    // Filter usage hanya untuk oil_id yang ada di STD
     const validUsage = usageRes.rows.filter((r) =>
       validStdSet.has(`${r.line_id}_${r.oil_id}`)
     );
@@ -60,25 +58,73 @@ async function getStdChemicalUsage(targetStart, clientParam = null) {
         (totalUsagePerLineOil[key] || 0) + parseFloat(r.total_usage);
     });
 
-    // Hitung STD per mesin proporsional
-    const std_per_machine = validUsage.map((r) => {
-      const lineStd = std_per_line.find(
-        (s) => s.line_id === r.line_id && s.oil_id === r.oil_id
-      );
-      const stdLineValue = lineStd ? lineStd.std_value : 0;
-      const key = `${r.line_id}_${r.oil_id}`;
-      const prop =
-        totalUsagePerLineOil[key] > 0
-          ? parseFloat(r.total_usage) / totalUsagePerLineOil[key]
-          : 0;
-      return {
-        machine_id: r.machine_id,
-        line_id: r.line_id,
-        oil_id: r.oil_id,
-        std_value: stdLineValue * prop,
-      };
+    // Ambil semua mesin di line untuk fallback
+    const machineQuery = await client.query(
+      `SELECT machine_id, COALESCE(root_line_id, line_id) AS line_id FROM tb_m_machines`
+    );
+    const machinePerLine = {};
+    machineQuery.rows.forEach((m) => {
+      if (!machinePerLine[m.line_id]) machinePerLine[m.line_id] = [];
+      machinePerLine[m.line_id].push(m.machine_id);
     });
-    // console.log("🔹 std_per_mesin:", std_per_machine);
+
+    // 3️⃣ Hitung STD per mesin proporsional
+    const std_per_machine = [];
+
+    std_per_line.forEach((lineStd) => {
+      const { line_id, oil_id, std_value } = lineStd;
+      const key = `${line_id}_${oil_id}`;
+
+      const usageMachines = validUsage.filter(
+        (u) => u.line_id === line_id && u.oil_id === oil_id
+      );
+
+      if (usageMachines.length > 0) {
+        // Mesin ada usage → proporsional
+        usageMachines.forEach((u) => {
+          const total3Month = parseFloat(u.total_usage);
+          const prop =
+            totalUsagePerLineOil[key] > 0
+              ? total3Month / totalUsagePerLineOil[key]
+              : 0;
+          const monthlyStd = (std_value * prop) / 3; // rata-rata bulanan
+
+          // // 🔹 LOG INFO
+          // console.log(
+          //   `Machine ${u.machine_id} | Line ${line_id} | Oil ${oil_id} | ` +
+          //     `Total 3 bulan: ${total3Month.toFixed(2)} | Prop: ${prop.toFixed(
+          //       2
+          //     )} | ` +
+          //     `STD permesin : ${monthlyStd.toFixed(2)}`
+          // );
+
+          std_per_machine.push({
+            machine_id: u.machine_id,
+            line_id,
+            oil_id,
+            std_value: monthlyStd,
+          });
+        });
+      } else {
+        // Mesin baru / belum ada usage → bagi rata ke semua mesin di line
+        const machinesInLine = machinePerLine[line_id] || [];
+        const monthlyStd = std_value / (3 * machinesInLine.length); // rata-rata bulanan
+        machinesInLine.forEach((machine_id) => {
+          // console.log(
+          //   `Machine ${machine_id} | Line ${line_id} | Oil ${oil_id} | ` +
+          //     `No usage history → STD dibagi rata: ${monthlyStd.toFixed(2)}`
+          // );
+
+          std_per_machine.push({
+            machine_id,
+            line_id,
+            oil_id,
+            std_value: monthlyStd,
+          });
+        });
+      }
+    });
+
     return {
       std_per_line,
       std_per_machine,
