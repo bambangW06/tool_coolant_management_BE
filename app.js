@@ -84,6 +84,16 @@ const fs = require("fs");
 
 const app = express();
 
+app.use((req, res, next) => {
+  console.log(`[HIT] ${req.method} ${req.originalUrl}`);
+
+  res.on("finish", () => {
+    console.log(`[DONE] ${req.method} ${req.originalUrl}`);
+  });
+
+  next();
+});
+
 // ===== FOLDER LOG OTOMATIS =====
 const logDir = path.join(__dirname, "logs");
 if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);

@@ -37,7 +37,7 @@ module.exports = {
       const client = await database.connect();
       const userDataQuery = await client.query(q, [jabatan]);
       const userData = userDataQuery.rows;
-      console.log("userData", userData);
+      // console.log("userData", userData);
 
       client.release();
       res.status(200).json({
