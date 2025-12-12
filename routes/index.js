@@ -3,7 +3,6 @@ var router = express.Router();
 var Karyawan = require("./employees/karyawan");
 var pilih = require("./employees/pilihnama");
 var absences = require("./absences/absence");
-var history = require("./history/absen");
 var lines = require("./cms/line");
 var machines = require("./cms/machine");
 var grafik = require("./cms/grafik");

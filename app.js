@@ -128,13 +128,36 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// const uploadDynamic = (req, res, next) => {
+//   upload.fields([{ name: "foto", maxCount: 10 }])(req, res, (err) => {
+//     if (err) return next(err);
+//     if (req.files && req.files.foto) {
+//       if (!Array.isArray(req.files.foto)) req.files.foto = [req.files.foto];
+//       if (req.files.foto.length === 1) req.file = req.files.foto[0];
+//     }
+//     next();
+//   });
+// };
+
 const uploadDynamic = (req, res, next) => {
+  // ❌ Kalau bukan multipart, langsung lanjut (tidak diproses multer)
+  if (
+    !req.headers["content-type"] ||
+    !req.headers["content-type"].includes("multipart/form-data")
+  ) {
+    return next();
+  }
+
+  // ✔ Kalau memang multipart, baru multer jalan
   upload.fields([{ name: "foto", maxCount: 10 }])(req, res, (err) => {
     if (err) return next(err);
+
     if (req.files && req.files.foto) {
       if (!Array.isArray(req.files.foto)) req.files.foto = [req.files.foto];
+
       if (req.files.foto.length === 1) req.file = req.files.foto[0];
     }
+
     next();
   });
 };
