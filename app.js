@@ -112,7 +112,7 @@ let inflight = 0;
 
 app.use((req, res, next) => {
   // log API saja
-  if (!req.originalUrl.startsWith("/api")) return next();
+  // if (!req.originalUrl.startsWith("/api")) return next();
 
   inflight++;
   const start = process.hrtime.bigint();
