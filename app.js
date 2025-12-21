@@ -79,53 +79,81 @@ const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
 const cookieParser = require("cookie-parser");
-const logger = require("morgan");
 const fs = require("fs");
 
 const app = express();
 
-app.use((req, res, next) => {
-  console.log(`[HIT] ${req.method} ${req.originalUrl}`);
-
-  res.on("finish", () => {
-    console.log(`[DONE] ${req.method} ${req.originalUrl}`);
-  });
-
-  next();
-});
-
-// ===== FOLDER LOG OTOMATIS =====
+/* ======================================================
+   LOG DIRECTORY
+====================================================== */
 const logDir = path.join(__dirname, "logs");
 if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
 
-// ===== REQUEST LOGGING & LONG REQUEST DETECTION =====
-const LONG_REQUEST_THRESHOLD = 5000; // ms
+/* ======================================================
+   NON-BLOCKING LOG STREAMS (AMAN)
+====================================================== */
+const accessLogStream = fs.createWriteStream(path.join(logDir, "access.log"), {
+  flags: "a",
+});
+
+const slowLogStream = fs.createWriteStream(path.join(logDir, "slow.log"), {
+  flags: "a",
+});
+
+const errorLogStream = fs.createWriteStream(path.join(logDir, "error.log"), {
+  flags: "a",
+});
+
+/* ======================================================
+   REQUEST LOGGER + FREEZE DETECTOR
+====================================================== */
+const SLOW_THRESHOLD = 3000; // ms
+let inflight = 0;
+
 app.use((req, res, next) => {
-  const start = Date.now();
+  // log API saja
+  if (!req.originalUrl.startsWith("/api")) return next();
+
+  inflight++;
+  const start = process.hrtime.bigint();
 
   res.on("finish", () => {
-    const duration = Date.now() - start;
+    inflight--;
+    const end = process.hrtime.bigint();
+    const duration = Number(end - start) / 1e6;
 
-    // log request normal
-    const reqLog = `[${new Date().toISOString()}] ${req.method} ${
-      req.originalUrl
-    } ${res.statusCode} ${duration}ms\n`;
-    fs.appendFileSync(path.join(logDir, "request.log"), reqLog);
+    const logLine =
+      `[${new Date().toISOString()}] ` +
+      `${req.method} ${req.originalUrl} ` +
+      `${res.statusCode} ${duration.toFixed(1)}ms\n`;
 
-    // log long request
-    if (duration > LONG_REQUEST_THRESHOLD) {
-      const longLog = `[${new Date().toISOString()}] LONG REQUEST ${
-        req.method
-      } ${req.originalUrl} ${duration}ms\n`;
-      fs.appendFileSync(path.join(logDir, "long_requests.log"), longLog);
+    // semua request API
+    accessLogStream.write(logLine);
+
+    // request lambat (biang freeze)
+    if (duration > SLOW_THRESHOLD) {
+      slowLogStream.write("[SLOW] " + logLine);
+    }
+
+    // request numpuk (refresh brutal)
+    if (inflight > 20) {
+      slowLogStream.write(
+        `[OVERLOAD] ${new Date().toISOString()} inflight=${inflight} ${
+          req.method
+        } ${req.originalUrl}\n`
+      );
     }
   });
 
   next();
 });
 
-// ===== MULTER SETUP =====
+/* ======================================================
+   MULTER (UPLOAD) – TIDAK GLOBAL
+====================================================== */
 const uploadPath = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath);
+
 const storage = multer.diskStorage({
   destination: uploadPath,
   filename: (req, file, cb) => {
@@ -138,19 +166,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// const uploadDynamic = (req, res, next) => {
-//   upload.fields([{ name: "foto", maxCount: 10 }])(req, res, (err) => {
-//     if (err) return next(err);
-//     if (req.files && req.files.foto) {
-//       if (!Array.isArray(req.files.foto)) req.files.foto = [req.files.foto];
-//       if (req.files.foto.length === 1) req.file = req.files.foto[0];
-//     }
-//     next();
-//   });
-// };
-
 const uploadDynamic = (req, res, next) => {
-  // ❌ Kalau bukan multipart, langsung lanjut (tidak diproses multer)
   if (
     !req.headers["content-type"] ||
     !req.headers["content-type"].includes("multipart/form-data")
@@ -158,39 +174,42 @@ const uploadDynamic = (req, res, next) => {
     return next();
   }
 
-  // ✔ Kalau memang multipart, baru multer jalan
   upload.fields([{ name: "foto", maxCount: 10 }])(req, res, (err) => {
     if (err) return next(err);
 
     if (req.files && req.files.foto) {
       if (!Array.isArray(req.files.foto)) req.files.foto = [req.files.foto];
-
       if (req.files.foto.length === 1) req.file = req.files.foto[0];
     }
-
     next();
   });
 };
 
-// ===== MIDDLEWARE LAIN =====
+/* ======================================================
+   MIDDLEWARE UMUM
+====================================================== */
 app.use(cors());
-app.use(uploadDynamic);
-app.use(logger("dev"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use("/uploads", express.static(uploadPath));
 
-// ===== ROUTES =====
-app.use("/", require("./routes/index"));
+/* ======================================================
+   ROUTES
+====================================================== */
+app.use("/", uploadDynamic, require("./routes/index"));
 
-// ===== GLOBAL ERROR HANDLER =====
+/* ======================================================
+   GLOBAL ERROR HANDLER (ASYNC LOG)
+====================================================== */
 app.use((err, req, res, next) => {
-  const errorLog = `[${new Date().toISOString()}] ERROR ${req.method} ${
-    req.originalUrl
-  }\n${err.stack}\n`;
-  fs.appendFileSync(path.join(logDir, "error.log"), errorLog);
-  console.error(errorLog); // biar muncul juga di PM2 logs
+  const log =
+    `[${new Date().toISOString()}] ERROR ` +
+    `${req.method} ${req.originalUrl}\n` +
+    `${err.stack}\n\n`;
+
+  errorLogStream.write(log);
+  console.error(err);
   res.status(500).json({ message: "Internal Server Error" });
 });
 
