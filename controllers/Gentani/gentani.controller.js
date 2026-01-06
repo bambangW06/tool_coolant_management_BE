@@ -70,7 +70,15 @@ module.exports = {
   getStdGentani: async (req, res) => {
     try {
       const { line_id, month } = req.query;
-      const monthStart = month.endsWith("-01") ? month : `${month}-01`;
+
+      if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({
+          message: "Invalid month format, use YYYY-MM",
+        });
+      }
+
+      const monthStart = `${month}-01`;
+
       const q = `
       SELECT 
         t.*, 
@@ -80,19 +88,20 @@ module.exports = {
       FROM tb_m_oil_targets_hist t
       LEFT JOIN tb_m_lines l ON l.line_id = t.line_id
       LEFT JOIN tb_m_oils m ON m.oil_id = t.oil_id
-      LEFT JOIN tb_m_oil_targets d ON d.line_id = t.line_id AND d.oil_id = t.oil_id
-      WHERE t.line_id = $1 AND t.month = $2
+      LEFT JOIN tb_m_oil_targets d 
+        ON d.line_id = t.line_id 
+       AND d.oil_id = t.oil_id
+      WHERE t.line_id = $1
+        AND t.month >= $2::date
+        AND t.month < ($2::date + INTERVAL '1 month')
       ORDER BY d.target_id DESC
     `;
 
-      const client = await database.connect();
-      const result = await client.query(q, [line_id, monthStart]);
-      const rows = result.rows;
-      client.release();
+      const result = await database.query(q, [line_id, monthStart]);
 
       res.status(200).json({
         message: "Success to Get Data",
-        data: rows,
+        data: result.rows,
       });
     } catch (error) {
       console.error("Error getStdGentani:", error);

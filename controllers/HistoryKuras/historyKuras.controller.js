@@ -5,14 +5,17 @@ module.exports = {
   getHistoryKuras: async (req, res) => {
     try {
       const machine_id = req.params.machine_id;
+      console.log("machine_id", machine_id);
+
       let q = `SELECT * FROM tb_r_schedules WHERE machine_id = $1 ORDER BY actual_dt DESC`;
 
       const client = await database.connect();
       const userDataQuery = await client.query(q, [machine_id]);
+      console.log("query", userDataQuery);
+
       const userData = userDataQuery.rows;
 
       client.release();
-      console.log("userData", userData);
 
       res.status(200).json({
         message: "Success to Get Data",
