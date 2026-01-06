@@ -152,7 +152,7 @@ module.exports = {
   editStdGentani: async (req, res) => {
     const { target_id, oil_id, line_id, gentani_val, plan_prod, created_by } =
       req.body;
-    console.log("reg.boy", req.body);
+    console.log("reg.body edit gentani", req.body);
 
     if (!target_id) {
       return res.status(400).json({ message: "target_id wajib diisi" });
