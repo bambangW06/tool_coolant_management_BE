@@ -37,7 +37,15 @@ module.exports = {
   },
   getMasterNote: async (req, res) => {
     try {
-      const q = `SELECT * FROM tb_m_usage_note WHERE deleted_dt IS NULL ORDER BY note_id DESC`;
+      const notesUsed = req.query.notesUsed;
+      console.log("notesUsed", notesUsed);
+
+      let q = "";
+      if (notesUsed) {
+        q = `SELECT * FROM tb_m_usage_note WHERE deleted_dt IS NULL ORDER BY note_id ASC`;
+      } else {
+        q = `SELECT * FROM tb_m_usage_note WHERE deleted_dt IS NULL ORDER BY note_id DESC`;
+      }
       const client = await database.connect();
       const userDataQuery = await client.query(q);
       const userData = userDataQuery.rows;
